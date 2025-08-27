@@ -12,11 +12,8 @@
  - Ini *detektor rumor* (bukan konfirmasi resmi). Selalu verifikasi ke sumber resmi (IDX/OJK/Emiten).
  - Akses internet diperlukan ketika aplikasi berjalan (untuk mengambil RSS Google News dan artikel).
  - Instal dependensi di environment Anda: pip install streamlit feedparser pandas requests beautifulsoup4 python-dateutil tldextract
-
- Menjalankan:
-   streamlit run scanner.py
-
- Cara jalan lokal: 
+ ---------------------------------------------------------------
+ Cara Menjalankan di lokal: 
   - pip3 install -r requirements.txt → streamlit run scanner.py
 
  Cara menjalankan di Ubuntu:
