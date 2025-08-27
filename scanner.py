@@ -1,4 +1,4 @@
-# Streamlit App: Pendeteksi Rumor Right Issue & Aksi Korporasi (IDX)
+# Streamlit App: Backdoor Listing and Corporate Actions Scanner 
 # ---------------------------------------------------------------
 # Fitur utama:
 # - Mengumpulkan berita dari Google News (RSS) berbasis kata kunci Indonesia
@@ -33,8 +33,8 @@ from dateutil import parser as dateparser
 
 import streamlit as st
 
-st.set_page_config(page_title="Rumor Right Issue & Aksi Korporasi IDX", layout="wide")
-st.title("📰 Backdoor Listing and Corporate Action Scanner ")
+st.set_page_config(page_title="Backdoor Listing and Corporate Actions Scanner", layout="wide")
+st.title("📰 Backdoor Listing and Corporate Actions Scanner ")
 st.caption(
     "Alat ini membantu menyaring **rumor** dari berita. Mohon **verifikasi** ke pengumuman resmi IDX/OJK/emitmen sebelum mengambil keputusan.")
 
@@ -1054,7 +1054,7 @@ selected_categories = st.sidebar.multiselect(
 
 extra_keywords = st.sidebar.text_input(
     "Kata kunci tambahan (opsional)", value="",
-    placeholder="mis. 'rights issue jumbo', 'akuisisi nikel'",
+    placeholder="'rights issue jumbo', 'akuisisi nikel'",
 )
 
 max_results_per_query = st.sidebar.number_input(
@@ -1062,18 +1062,18 @@ max_results_per_query = st.sidebar.number_input(
     help="Semakin besar, semakin banyak berita yang diproses.")
 
 # Batasi subset whitelist (opsional)
-subset_allowed = st.sidebar.multiselect(
-    "Batasi hanya ke emiten tertentu (opsional)",
-    sorted(ALLOWED_TICKERS),
-    default=sorted(ALLOWED_TICKERS),
-    help="Pilih subset whitelist untuk difokuskan.")
-subset_allowed = set(subset_allowed) if subset_allowed else ALLOWED_TICKERS
+#subset_allowed = st.sidebar.multiselect(
+#    "Batasi hanya ke emiten tertentu (opsional)",
+#    sorted(ALLOWED_TICKERS),
+#    default=sorted(ALLOWED_TICKERS),
+#    help="Pilih subset whitelist untuk difokuskan.")
+#subset_allowed = set(subset_allowed) if subset_allowed else ALLOWED_TICKERS
 
 include_official = st.sidebar.checkbox(
     "Cek sumber resmi IDX (eksperimental)", value=False,
     help="Mencoba memindai area pengumuman resmi. Fitur eksperimental — bisa tidak stabil.")
 
-show_raw_articles = st.sidebar.checkbox("Tampilkan semua artikel mentah", value=False)
+show_raw_articles = st.sidebar.checkbox("Tampilkan semua artikel mentah", value=True)
 
 st.sidebar.markdown("---")
 export_btn_placeholder = st.sidebar.empty()
@@ -1253,156 +1253,165 @@ def try_fetch_official_idx_announcements(max_items: int = 100):
 # ==========================
 run_btn = st.button("🚀 Cari Rumor Sekarang", type="primary")
 
-if run_btn:
+# Ambil/refresh data (klik tombol atau pertama kali/ubah filter)
+if run_btn or "articles" not in st.session_state:
     with st.spinner("Mengumpulkan berita dari Google News RSS…"):
         articles = run_collection(selected_categories, extra_keywords, max_results_per_query)
-        if include_official:
-            official_items = try_fetch_official_idx_announcements()
-        else:
-            official_items = []
+        official_items = try_fetch_official_idx_announcements() if include_official else []
+    st.session_state["articles"] = articles
+    st.session_state["official_items"] = official_items
 
+# Pakai data dari session agar UI tetap ada setelah rerun
+articles = st.session_state.get("articles", [])
+official_items = st.session_state.get("official_items", [])
+
+if articles:
     st.success(f"Selesai. Ditemukan {len(articles)} artikel rumor + {len(official_items)} indikasi pengumuman resmi (jika tersedia).")
-
-    # ==========================
-    # AGREGASI PER EMITEN
-    # ==========================
-    emiten_map: dict[str, dict] = {}
-
-    for a in articles:
-        candidate_tickers = [t for t in (a["tickers"] or []) if t in subset_allowed]
-        if not candidate_tickers:
-            continue
-
-        for tk in candidate_tickers:
-            rec = emiten_map.setdefault(tk, {
-                "ticker": tk,
-                "company_names": set(),
-                "categories": set(),
-                "articles": [],
-                "sources": set(),
-                "first_seen": None,
-                "last_seen": None,
-                "raw_hits": 0,
-            })
-
-            if a["company_hint"]:
-                rec["company_names"].add(a["company_hint"])
-            rec["categories"].add(a["category"])
-            rec["articles"].append(a)
-            rec["sources"].add(a["source"])
-            rec["raw_hits"] += 1
-            if a["published"]:
-                if not rec["first_seen"] or a["published"] < rec["first_seen"]:
-                    rec["first_seen"] = a["published"]
-                if not rec["last_seen"] or a["published"] > rec["last_seen"]:
-                    rec["last_seen"] = a["published"]
-                    rec["last_seen"] = a["published"]
-
-    # Buat dataframe ringkasan
-    rows = []
-    for tk, rec in emiten_map.items():
-        if tk == "(NON-TICKER)":
-            continue  # sembunyikan baris tanpa ticker di ringkasan
-        score = rec["raw_hits"] * score_from_categories(rec["categories"])
-        rows.append({
-            "Ticker": tk,
-            "Nama (indikatif)": "; ".join(sorted(rec["company_names"]))[:120] or "—",
-            "Kategori": ", ".join(sorted(rec["categories"])),
-            "Jumlah Artikel": rec["raw_hits"],
-            "Sumber Unik": len(rec["sources"]),
-            "Skor": round(score, 2),
-            "Terakhir Terlihat": rec["last_seen"].strftime("%Y-%m-%d %H:%M") if rec["last_seen"] else "—",
-        })
-
-    df = pd.DataFrame(rows).sort_values(["Skor", "Jumlah Artikel"], ascending=[False, False])
-
-    st.subheader("📈 Ringkasan Kandidat Emiten Terindikasi Rumor")
-    if df.empty:
-        st.info("Tidak ada kandidat emiten yang terdeteksi di periode & kategori terpilih.")
-    else:
-        st.dataframe(df, use_container_width=True, height=420)
-
-    # Ekspor CSV
-    if not df.empty:
-        csv_buf = io.StringIO()
-        df.to_csv(csv_buf, index=False)
-        export_btn_placeholder.download_button(
-            label="📥 Unduh Ringkasan (CSV)",
-            data=csv_buf.getvalue(),
-            file_name=f"rumor_idx_{start_date}_{end_date}.csv",
-            mime="text/csv",
-        )
-
-    # ==========================
-    # DETAIL PER EMITEN
-    # ==========================
-    st.markdown("---")
-    st.subheader("🔎 Detail & Bukti Artikel per Emiten")
-
-    selected_ticker = st.selectbox(
-        "Pilih Ticker untuk melihat bukti",
-        [r["Ticker"] for r in rows] if rows else [],
-        index=0 if rows else None,
-        placeholder="Pilih ticker…",
-    )
-
-    if selected_ticker:
-        rec = emiten_map.get(selected_ticker)
-        if not rec:
-            st.warning("Data tidak tersedia untuk ticker terpilih.")
-        else:
-            st.markdown(
-                f"**Ticker:** `{rec['ticker']}`  ")
-            st.markdown(
-                f"**Nama (indikatif):** {('; '.join(sorted(rec['company_names'])) or '—')}  ")
-            st.markdown(
-                f"**Kategori Terindikasi:** {', '.join(sorted(rec['categories']))}  ")
-            st.markdown(
-                f"**Periode:** {start_date} s.d. {end_date}  ")
-
-            # Daftar artikel
-            for i, art in enumerate(sorted(rec["articles"], key=lambda x: x["published"] or datetime.min, reverse=True), start=1):
-                with st.expander(f"{i}. {art['title'][:140] if art['title'] else '(tanpa judul)'}"):
-                    st.write(f"**Tanggal:** {art['published'].strftime('%Y-%m-%d %H:%M') if art['published'] else '—'}")
-                    st.write(f"**Sumber:** {art['source'] or '—'} | **Kategori:** {art['category']}")
-                    if art["summary"]:
-                        st.write(art["summary"])
-                    st.write(f"[Baca Artikel]({art['link']})")
-
-    # ==========================
-    # ARTIKEL MENTAH & SUMBER RESMI
-    # ==========================
-    if show_raw_articles:
-        st.markdown("---")
-        st.subheader("🧾 Semua Artikel Mentah (Disaring tanggal)")
-        raw_df = pd.DataFrame([
-            {
-                "Tanggal": a["published"].strftime("%Y-%m-%d %H:%M") if a["published"] else "—",
-                "Kategori": a["category"],
-                "Keyword": a["keyword"],
-                "Judul": a["title"],
-                "Ticker?": ", ".join(a["tickers"]) or "—",
-                "Perusahaan?": a["company_hint"] or "—",
-                "Sumber": a["source"],
-                "Link": a["link"],
-            }
-            for a in articles
-        ])
-        st.dataframe(raw_df, use_container_width=True, height=500)
-
-    if include_official:
-        st.markdown("---")
-        st.subheader("📜 Indikasi Pengumuman Resmi IDX (Eksperimental)")
-        if not official_items:
-            st.info("Tidak ditemukan atau endpoint berubah.")
-        else:
-            for i, it in enumerate(official_items, start=1):
-                st.write(f"{i}. [{it['title']}]({it['link']}) — {it['source']}")
-
 else:
     st.info(
         "Pilih kategori, atur jangka waktu, lalu klik **‘🚀 Cari Rumor Sekarang’**.\n\n"
-        "Tips: tambah kata kunci spesifik (mis. sektor, komoditas) untuk mempersempit hasil.")
+        "Tips: tambah kata kunci spesifik (mis. sektor, komoditas) untuk mempersempit hasil."
+    )
+
+# ==========================
+# AGREGASI PER EMITEN
+# ==========================
+emiten_map: dict[str, dict] = {}
+
+for a in articles:
+    candidate_tickers = a["tickers"] or []
+    if not candidate_tickers:
+        continue
+
+    for tk in candidate_tickers:
+        rec = emiten_map.setdefault(tk, {
+            "ticker": tk,
+            "company_names": set(),
+            "categories": set(),
+            "articles": [],
+            "sources": set(),
+            "first_seen": None,
+            "last_seen": None,
+            "raw_hits": 0,
+        })
+
+        if a["company_hint"]:
+            rec["company_names"].add(a["company_hint"])
+        rec["categories"].add(a["category"])
+        rec["articles"].append(a)
+        rec["sources"].add(a["source"])
+        rec["raw_hits"] += 1
+        if a["published"]:
+            if not rec["first_seen"] or a["published"] < rec["first_seen"]:
+                rec["first_seen"] = a["published"]
+            if not rec["last_seen"] or a["published"] > rec["last_seen"]:
+                rec["last_seen"] = a["published"]  # (hapus baris duplikat yang sama)
+
+# Buat dataframe ringkasan
+rows = []
+for tk, rec in emiten_map.items():
+    score = rec["raw_hits"] * score_from_categories(rec["categories"])
+    rows.append({
+        "Ticker": tk,
+        "Nama (indikatif)": "; ".join(sorted(rec["company_names"]))[:120] or "—",
+        "Kategori": ", ".join(sorted(rec["categories"])),
+        "Jumlah Artikel": rec["raw_hits"],
+        "Sumber Unik": len(rec["sources"]),
+        "Skor": round(score, 2),
+        "Terakhir Terlihat": rec["last_seen"].strftime("%Y-%m-%d %H:%M") if rec["last_seen"] else "—",
+    })
+
+df = pd.DataFrame(rows).sort_values(["Skor", "Jumlah Artikel"], ascending=[False, False]) if rows else pd.DataFrame(rows)
+
+st.subheader("📈 Ringkasan Kandidat Emiten Terindikasi Rumor")
+if df.empty:
+    st.info("Tidak ada kandidat emiten yang terdeteksi di periode & kategori terpilih.")
+else:
+    st.dataframe(df, use_container_width=True, height=420)
+    # Ekspor CSV
+    csv_buf = io.StringIO()
+    df.to_csv(csv_buf, index=False)
+    export_btn_placeholder.download_button(
+        label="📥 Unduh Ringkasan (CSV)",
+        data=csv_buf.getvalue(),
+        file_name=f"rumor_idx_{start_date}_{end_date}.csv",
+        mime="text/csv",
+    )
+
+# ==========================
+# DETAIL PER EMITEN
+# ==========================
+st.markdown("---")
+st.subheader("🔎 Detail & Bukti Artikel per Emiten")
+
+selected_ticker = st.selectbox(
+    "Pilih Ticker untuk melihat bukti",
+    [r["Ticker"] for r in rows] if rows else [],
+    index=0 if rows else None,
+    placeholder="Pilih ticker…",
+)
+
+if selected_ticker:
+    rec = emiten_map.get(selected_ticker)
+    if not rec:
+        st.warning("Data tidak tersedia untuk ticker terpilih.")
+    else:
+        st.markdown(f"**Ticker:** `{rec['ticker']}`  ")
+        st.markdown(f"**Nama (indikatif):** {('; '.join(sorted(rec['company_names'])) or '—')}  ")
+        st.markdown(f"**Kategori Terindikasi:** {', '.join(sorted(rec['categories']))}  ")
+        st.markdown(f"**Periode:** {start_date} s.d. {end_date}  ")
+        for i, art in enumerate(sorted(rec["articles"], key=lambda x: x["published"] or datetime.min, reverse=True), start=1):
+            with st.expander(f"{i}. {art['title'][:140] if art['title'] else '(tanpa judul)'}"):
+                st.write(f"**Tanggal:** {art['published'].strftime('%Y-%m-%d %H:%M') if art['published'] else '—'}")
+                st.write(f"**Sumber:** {art['source'] or '—'} | **Kategori:** {art['category']}")
+                if art["summary"]:
+                    st.write(art["summary"])
+                st.write(f"[Baca Artikel]({art['link']})")
+
+# ==========================
+# ARTIKEL MENTAH & SUMBER RESMI
+# ==========================
+if show_raw_articles:
+    st.markdown("---")
+    st.subheader("🧾 Semua Artikel Mentah")
+
+    rows_raw = [
+        {
+            "Tanggal": a["published"].strftime("%Y-%m-%d %H:%M") if a["published"] else "—",
+            "Kategori": a["category"],
+            "Keyword": a["keyword"],
+            "Judul": a["title"],
+            "Ticker?": ", ".join(a["tickers"]) or "—",
+            #"Perusahaan?": a["company_hint"] or "—",
+            #"Sumber": a["source"],
+            "Link": a["link"],
+            "_ts": int(a["published"].timestamp()) if a["published"] else -1,  # untuk sort
+        }
+        for a in articles
+    ]
+
+    raw_df = pd.DataFrame(rows_raw)
+    if not raw_df.empty:
+        raw_df = raw_df.sort_values("_ts", ascending=False).drop(columns=["_ts"])  # terbaru paling atas
+
+    st.dataframe(
+        raw_df,
+        use_container_width=True,
+        height=500,
+        column_config={"Link": st.column_config.LinkColumn("Link", display_text="Buka Artikel")}
+    )
+
+if include_official:
+    st.markdown("---")
+    st.subheader("📜 Indikasi Pengumuman Resmi IDX (Eksperimental)")
+    if not official_items:
+        st.info("Tidak ditemukan atau endpoint berubah.")
+    else:
+        for i, it in enumerate(official_items, start=1):
+            st.write(f"{i}. [{it['title']}]({it['link']}) — {it['source']}")
+
+
+
 
 # ==========================
 # DISCLAIMER
@@ -1412,3 +1421,4 @@ st.markdown(
     "**Disclaimer:** Aplikasi ini memanfaatkan pencarian berita publik untuk *indikasi rumor*. "+
     "Informasi ini **bukan** nasihat investasi dan tidak menggantikan pengumuman resmi. "+
     "Selalu lakukan *due diligence* dan cek dokumen resmi (prospektus, keterbukaan informasi IDX/OJK).")
+
