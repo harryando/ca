@@ -14,9 +14,11 @@ Backdoor Listing and Corporate Actions Scanner
  - Instal dependensi di environment Anda: pip install streamlit feedparser pandas requests beautifulsoup4 python-dateutil tldextract
  ---------------------------------------------------------------
  Cara Menjalankan di lokal: 
-  - pip3 install -r requirements.txt → streamlit run scanner.py
+  - pip3 install -r requirements.txt
+  - streamlit run scanner.py
 
  Cara menjalankan di Ubuntu:
   - python3 -m venv .venv
   - source .venv/bin/activate
+  - pip3 install streamlit feedparser pandas requests beautifulsoup4 python-dateutil tldextract
   - streamlit run scanner.py
