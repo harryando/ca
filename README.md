@@ -1,4 +1,4 @@
- Streamlit App: Backdoor Listing and Corporate Actions Scanner
+Backdoor Listing and Corporate Actions Scanner
  ---------------------------------------------------------------
  Fitur utama:
  - Mengumpulkan berita dari Google News (RSS) berbasis kata kunci Indonesia
