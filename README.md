@@ -17,9 +17,9 @@
    streamlit run scanner.py
 
  Cara jalan lokal: 
-   pip3 install -r requirements.txt → streamlit run scanner.py
+  - pip3 install -r requirements.txt → streamlit run scanner.py
 
  Cara menjalankan di Ubuntu:
-   python3 -m venv .venv
-   source .venv/bin/activate
-   streamlit run scanner.py
+  - python3 -m venv .venv
+  - source .venv/bin/activate
+  - streamlit run scanner.py
