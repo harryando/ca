@@ -1165,16 +1165,8 @@ def guess_company_name(text: str) -> str | None:
 
 
 def score_from_categories(categories: set[str]) -> float:
-    """
-    Skor dasar:
-    - 1.0 + 0.25 * jumlah kategori unik
-    - +0.5 bonus bila ada kategori 'Backdoor Listing'
-    """
-    base = 1.0 + 0.25 * len(categories)
-    if "Backdoor Listing" in categories:
-        base += 0.5
-    return base
-
+    # bobot ringan per kategori unik
+    return 1.0 + 0.25 * len(categories)
 
 def scrape_article_title(url: str, timeout: int = 8) -> str | None:
     """Ambil judul halaman ketika feed tidak memberi cukup konteks."""
