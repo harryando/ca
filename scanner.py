@@ -1,4 +1,5 @@
-# Streamlit App: Backdoor Listing and Corporate Actions Scanner 
+# Backdoor Listing and Corporate Actions Scanner 
+# V1.1
 # ---------------------------------------------------------------
 # Fitur utama:
 # - Mengumpulkan berita dari Google News (RSS) berbasis kata kunci Indonesia
@@ -36,7 +37,8 @@ import streamlit as st
 st.set_page_config(page_title="Backdoor Listing and Corporate Actions Scanner", layout="wide")
 st.title("📰 Backdoor Listing and Corporate Actions Scanner ")
 st.caption(
-    "Alat ini membantu menyaring **rumor** dari berita. Mohon **verifikasi** ke pengumuman resmi IDX/OJK/emitmen sebelum mengambil keputusan.")
+    "Alat ini membantu menyaring **rumor** dari berita. Mohon **verifikasi** ke pengumuman resmi IDX/OJK/emitmen sebelum mengambil keputusan."
+)
 
 # ==========================
 # WHITELIST EMITEN (DARI PENGGUNA)
@@ -724,6 +726,7 @@ PGUN
 PICO
 PIPA
 PJAA
+PJHB
 PKPK
 PLAN
 PLAS
@@ -1013,7 +1016,25 @@ KEYWORD_CATEGORIES = {
         "private placement", "pmthmetd", "penambahan modal tanpa hmetd", "non pre-emptive"
     ],
     "Akuisisi / Merger": [
-        "akuisisi", "merger", "pengambilalihan", "takeover", "backdoor listing"
+        "akuisisi", "merger", "pengambilalihan", "takeover"
+    ],
+    "Backdoor Listing": [
+        "backdoor listing",
+        "rencana backdoor listing",
+        "skema backdoor listing",
+        "masuk bursa tanpa ipo",
+        "masuk ke bursa tanpa ipo",
+        "masuk ke pasar modal tanpa ipo",
+        "diakuisisi emiten tercatat",
+        "diambil alih emiten tercatat",
+        "diambil alih perusahaan tercatat",
+        "diakuisisi perusahaan tercatat",
+        "diakuisisi perusahaan publik",
+        "akuisisi perusahaan publik",
+        "akuisisi perusahaan tercatat",
+        "mengambil alih perusahaan tercatat",
+        "mengakuisisi perusahaan tercatat",
+        "backdoor IPO",
     ],
     "Stock Split / Reverse": [
         "stock split", "pemecahan saham", "reverse stock", "reverse stock split", "penggabungan saham"
@@ -1049,7 +1070,12 @@ start_date = end_date - timedelta(days=range_days)
 selected_categories = st.sidebar.multiselect(
     "Kategori aksi korporasi",
     list(KEYWORD_CATEGORIES.keys()),
-    default=["Right Issue (HMETD)", "Private Placement (PMTHMETD)", "Akuisisi / Merger"],
+    default=[
+        "Right Issue (HMETD)",
+        "Private Placement (PMTHMETD)",
+        "Akuisisi / Merger",
+        "Backdoor Listing",
+    ],
 )
 
 extra_keywords = st.sidebar.text_input(
@@ -1059,19 +1085,13 @@ extra_keywords = st.sidebar.text_input(
 
 max_results_per_query = st.sidebar.number_input(
     "Batas item per query (RSS)", min_value=10, max_value=200, value=50, step=10,
-    help="Semakin besar, semakin banyak berita yang diproses.")
-
-# Batasi subset whitelist (opsional)
-#subset_allowed = st.sidebar.multiselect(
-#    "Batasi hanya ke emiten tertentu (opsional)",
-#    sorted(ALLOWED_TICKERS),
-#    default=sorted(ALLOWED_TICKERS),
-#    help="Pilih subset whitelist untuk difokuskan.")
-#subset_allowed = set(subset_allowed) if subset_allowed else ALLOWED_TICKERS
+    help="Semakin besar, semakin banyak berita yang diproses."
+)
 
 include_official = st.sidebar.checkbox(
     "Cek sumber resmi IDX (eksperimental)", value=False,
-    help="Mencoba memindai area pengumuman resmi. Fitur eksperimental — bisa tidak stabil.")
+    help="Mencoba memindai area pengumuman resmi. Fitur eksperimental — bisa tidak stabil."
+)
 
 show_raw_articles = st.sidebar.checkbox("Tampilkan semua artikel mentah", value=True)
 
@@ -1145,8 +1165,15 @@ def guess_company_name(text: str) -> str | None:
 
 
 def score_from_categories(categories: set[str]) -> float:
-    # bobot ringan per kategori unik
-    return 1.0 + 0.25 * len(categories)
+    """
+    Skor dasar:
+    - 1.0 + 0.25 * jumlah kategori unik
+    - +0.5 bonus bila ada kategori 'Backdoor Listing'
+    """
+    base = 1.0 + 0.25 * len(categories)
+    if "Backdoor Listing" in categories:
+        base += 0.5
+    return base
 
 
 def scrape_article_title(url: str, timeout: int = 8) -> str | None:
@@ -1305,7 +1332,7 @@ for a in articles:
             if not rec["first_seen"] or a["published"] < rec["first_seen"]:
                 rec["first_seen"] = a["published"]
             if not rec["last_seen"] or a["published"] > rec["last_seen"]:
-                rec["last_seen"] = a["published"]  # (hapus baris duplikat yang sama)
+                rec["last_seen"] = a["published"]
 
 # Buat dataframe ringkasan
 rows = []
@@ -1382,8 +1409,6 @@ if show_raw_articles:
             "Keyword": a["keyword"],
             "Judul": a["title"],
             "Ticker?": ", ".join(a["tickers"]) or "—",
-            #"Perusahaan?": a["company_hint"] or "—",
-            #"Sumber": a["source"],
             "Link": a["link"],
             "_ts": int(a["published"].timestamp()) if a["published"] else -1,  # untuk sort
         }
@@ -1410,15 +1435,12 @@ if include_official:
         for i, it in enumerate(official_items, start=1):
             st.write(f"{i}. [{it['title']}]({it['link']}) — {it['source']}")
 
-
-
-
 # ==========================
 # DISCLAIMER
 # ==========================
 st.markdown(
     "---\n"
-    "**Disclaimer:** Aplikasi ini memanfaatkan pencarian berita publik untuk *indikasi rumor*. "+
-    "Informasi ini **bukan** nasihat investasi dan tidak menggantikan pengumuman resmi. "+
-    "Selalu lakukan *due diligence* dan cek dokumen resmi (prospektus, keterbukaan informasi IDX/OJK).")
-
+    "**Disclaimer:** Aplikasi ini memanfaatkan pencarian berita publik untuk *indikasi rumor*. "
+    "Informasi ini **bukan** nasihat investasi dan tidak menggantikan pengumuman resmi. "
+    "Selalu lakukan *due diligence* dan cek dokumen resmi (prospektus, keterbukaan informasi IDX/OJK)."
+)
