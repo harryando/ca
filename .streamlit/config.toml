@@ -1,9 +1,0 @@
-[server]
-headless = true
-enableXsrfProtection = true
-
-[client]
-toolbarMode = "minimal"
-
-[theme]
-base = "dark"
